@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sign LOI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.ethers.io/lib/ethers-5.0.umd.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/sign.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Sign LOI Document</h1>
+        <div id="initialState">
+            <div class="instructions">
+                <p>Click below to connect your MetaMask wallet and sign the LOI</p>
+            </div>
+            <div id="connect-container" class="connect-container">
+                <button id="connectButton" class="metamask-button">
+                    Connect MetaMask
+                </button>
+            </div>
+        </div>
+
+        <div id="metamaskBrowserState" style="display: none;">
+            <div class="instructions">
+                <p>Please sign the message in MetaMask to complete verification</p>
+            </div>
+        </div>
+
+        <div id="status" class="status" style="display: none;"></div>
+    </div>
+
+    <script>
+        const sessionId = '{{ session_id }}';
+    </script>
+    <script src="{{ url_for('static', filename='js/sign.js') }}"></script>
+</body>
+</html>

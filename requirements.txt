@@ -3,3 +3,7 @@ python-dotenv
 openai
 aiohttp
 requests
+redis==5.0.1
+eth-account==0.10.0
+web3==6.15.1
+PyPDF2
