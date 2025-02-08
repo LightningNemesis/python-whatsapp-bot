@@ -2,23 +2,16 @@ import logging
 from flask import current_app, jsonify
 import json
 import requests
+from werkzeug.utils import secure_filename
+import os
+from collections import defaultdict
 
 from app.services.openai_service import generate_response
+from app.services.web3_service import verify_object_signature
 import re
 
-from ..services.web3_service import Web3Service
-import redis
-from eth_account import Account
-from eth_account.messages import encode_defunct
-from datetime import datetime
-
-import requests
-import PyPDF2
-import io
-
-# Initialize redis and web3_service at module level
-redis_client = redis.Redis(host="localhost", port=6379, db=0)
-web3_service = Web3Service(redis_client)
+# Add this after the imports
+user_files = defaultdict(dict)  # Store user's uploaded files
 
 
 def log_http_response(response):
@@ -39,169 +32,6 @@ def get_text_message_input(recipient, text):
     )
 
 
-def extract_text_from_pdf(document_id):
-    """Download and extract text content from PDF from WhatsApp"""
-    try:
-        # Get document URL from WhatsApp API
-        headers = {
-            "Authorization": f"Bearer {current_app.config['ACCESS_TOKEN']}",
-            "User-Agent": "WhatsApp/2.24.2.82",  # Add User-Agent header
-        }
-
-        url = (
-            f"https://graph.facebook.com/{current_app.config['VERSION']}/{document_id}"
-        )
-
-        # Get the document URL from WhatsApp
-        response = requests.get(url, headers=headers)
-        if not response.ok:
-            logging.error(f"Failed to fetch document URL: {response.text}")
-            raise Exception("Failed to fetch document URL from WhatsApp")
-
-        document_url = response.json().get("url")
-        if not document_url:
-            raise Exception("Document URL not found in response")
-
-        # Download PDF with same headers
-        pdf_response = requests.get(
-            document_url, headers=headers, timeout=30  # Add timeout
-        )
-        if not pdf_response.ok:
-            logging.error(f"Failed to download PDF: {pdf_response.text}")
-            raise Exception("Failed to download PDF")
-
-        # Create PDF reader object
-        pdf_file = io.BytesIO(pdf_response.content)
-        pdf_reader = PyPDF2.PdfReader(pdf_file)
-
-        # Extract text from all pages
-        text_content = ""
-        for page in pdf_reader.pages:
-            text_content += page.extract_text()
-
-        # Clean and normalize text
-        text_content = " ".join(text_content.split())
-
-        if not text_content:
-            raise Exception("No text content extracted from PDF")
-
-        return text_content
-
-    except Exception as e:
-        logging.error(f"Error extracting PDF text: {str(e)}")
-        raise Exception("Failed to extract text from PDF document")
-
-
-# [Pending]
-def sign_with_org_key(content, phone_number):
-    """Sign content with organization's private key"""
-    # Implement organizational signing
-    private_key = current_app.config["PRIVATE_KEY"]
-    print(f"Private key is {private_key}")
-
-    # Combine content and phone number into a single message
-    message = f"{content}:{phone_number}"
-
-    # Encode the message for signing
-    encoded_message = encode_defunct(text=message)
-
-    # Sign the message using the private key
-    signed_message = Account.sign_message(encoded_message, private_key=private_key)
-
-    # Return the signature in hex format
-    return signed_message.signature.hex()
-
-
-def send_document_message(wa_id, signature_json):
-    """Send signature file via WhatsApp"""
-    # First send the LOI document
-    loi_data = json.dumps(
-        {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": wa_id,
-            "type": "document",
-            "document": {
-                "link": signature_json["text_content"],
-                "caption": "Here is your LOI document for reference",
-            },
-        }
-    )
-    send_message(loi_data)
-
-    # Then send the signature JSON file
-    signature_message = (
-        f"Signature Information:\n"
-        f"Document Hash: {signature_json['text_content']}\n"
-        f"Signature: {signature_json['signature']}\n"
-        f"Phone Number: {signature_json['phone_number']}"
-    )
-
-    data = get_text_message_input(wa_id, signature_message)
-    send_message(data)
-
-    # Send instructions
-    instructions = (
-        "Please save this signature information. "
-        "You'll need it for verification when scheduling meetings. "
-        "To schedule a meeting, simply send 'schedule meeting'."
-    )
-
-    data = get_text_message_input(wa_id, instructions)
-    send_message(data)
-
-
-def create_verification_url(session_id):
-    """Create MetaMask deep link for verification"""
-    # Implement deep link generation
-    pass
-
-
-def schedule_meeting(wa_id):
-    """Handle actual meeting scheduling"""
-    # Implement calendar integration
-    pass
-
-
-def handle_document_message(message, wa_id):
-    """Handle incoming document messages"""
-
-    # Download and extract text content from PDF
-    document_id = message.get("document", {}).get("id", "")
-    text_content = extract_text_from_pdf(document_id)  # New function needed
-
-    # Sign content with organization's private key
-    signature = sign_with_org_key(text_content, wa_id)  # New function needed
-
-    # Store signature in JSON format
-    signature_json = {
-        "text_content": text_content,
-        "signature": signature,
-        "phone_number": wa_id,
-        "timestamp": datetime.now().isoformat(),
-    }
-    print(f"Signature JSON is {signature_json}")
-
-    # Create signing session
-    session_id = web3_service.create_signing_session(wa_id, signature_json)
-
-    # # Generate signing URL
-    # signing_url = f"https://immune-grand-bulldog.ngrok-free.app/sign/{session_id}"
-
-    # # Send response message
-    # response = f"""I've received your LOI document. To sign it, please click this link:
-    # {signing_url}
-
-    # You'll need to scan a QR code with your preferred wallet app."""
-
-    # Send signature file in chat
-    send_document_message(wa_id, signature_json)  # New function needed
-
-    # data = get_text_message_input(wa_id, response)
-    # print(f"Data is {data}")
-    # send_message(data)
-
-
 # def generate_response(response):
 #     # Return text in uppercase
 #     return response.upper()
@@ -212,6 +42,9 @@ def send_message(data):
         "Content-type": "application/json",
         "Authorization": f"Bearer {current_app.config['ACCESS_TOKEN']}",
     }
+
+    print(f"version is {current_app.config['VERSION']}")
+    print(f"access token is {current_app.config['ACCESS_TOKEN']}")
 
     url = f"https://graph.facebook.com/{current_app.config['VERSION']}/{current_app.config['PHONE_NUMBER_ID']}/messages"
 
@@ -252,42 +85,145 @@ def process_text_for_whatsapp(text):
     return whatsapp_style_text
 
 
+def handle_document_message(message, wa_id, name):
+    """
+    Handle incoming document messages from WhatsApp
+    """
+    document = message["document"]
+    mime_type = document["mime_type"]
+    filename = document.get("filename", "document.pdf")
+
+    # Check if it's a PDF or JSON
+    if mime_type != "application/pdf" and not filename.endswith(".json"):
+        response = "Please send either a PDF file or the signature.json file."
+        data = get_text_message_input(wa_id, response)
+        return send_message(data)
+
+    try:
+        document_id = document["id"]
+
+        # Create upload directory if it doesn't exist
+        upload_folder = current_app.config["UPLOAD_FOLDER"]
+        os.makedirs(upload_folder, exist_ok=True)
+
+        # Use secure filename and create full path
+        temp_filename = f"{document_id}_{secure_filename(filename)}"
+        temp_path = os.path.join(upload_folder, temp_filename)
+
+        # Get the document download URL
+        headers = {"Authorization": f"Bearer {current_app.config['ACCESS_TOKEN']}"}
+        url = (
+            f"https://graph.facebook.com/{current_app.config['VERSION']}/{document_id}"
+        )
+
+        # Get the media URL
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            raise Exception(f"Failed to get media URL: {response.text}")
+
+        media_url = response.json().get("url")
+        if not media_url:
+            raise Exception("Media URL not found in response")
+
+        # Download the actual file
+        response = requests.get(media_url, headers=headers)
+        if response.status_code != 200:
+            raise Exception("Failed to download file")
+
+        # Save the file temporarily
+        with open(temp_path, "wb") as f:
+            f.write(response.content)
+
+        # Store file paths based on type
+        if mime_type == "application/pdf":
+            user_files[wa_id]["pdf_path"] = temp_path
+            response_message = (
+                f"✅ PDF received successfully!\n\n"
+                f"📄 Document: {filename}\n"
+                f"Please send the signature.json file to verify the document."
+            )
+        else:  # JSON file
+            user_files[wa_id]["json_path"] = temp_path
+
+            # If both files are present, verify the signature
+            if "pdf_path" in user_files[wa_id]:
+                try:
+                    # Load the signature JSON
+                    with open(temp_path, "r") as f:
+                        signature_data = json.load(f)
+
+                    # Verify the signature
+                    is_verified = verify_object_signature(
+                        address=signature_data["address"],
+                        data=signature_data["data"],
+                        signature=signature_data["signature"],
+                    )
+
+                    response_message = (
+                        "✅ Verification complete!\n\n"
+                        f"📄 Document: {filename}\n"
+                        f"🔍 Verification result: {'Valid ✅' if is_verified else 'Invalid ❌'}"
+                    )
+
+                    # Clean up files after verification
+                    os.remove(user_files[wa_id]["pdf_path"])
+                    os.remove(temp_path)
+                    del user_files[wa_id]
+
+                except Exception as e:
+                    response_message = f"❌ Verification failed: {str(e)}"
+            else:
+                response_message = (
+                    f"✅ Signature file received!\n\n"
+                    f"Please send the PDF file to verify against this signature."
+                )
+
+        data = get_text_message_input(wa_id, response_message)
+        return send_message(data)
+
+    except Exception as e:
+        logging.error(f"Error processing document: {str(e)}")
+        error_message = f"Failed to process document: {str(e)}"
+        data = get_text_message_input(wa_id, error_message)
+        return send_message(data)
+
+
 def process_whatsapp_message(body):
     wa_id = body["entry"][0]["changes"][0]["value"]["contacts"][0]["wa_id"]
     name = body["entry"][0]["changes"][0]["value"]["contacts"][0]["profile"]["name"]
+    print(f"wa id is: {wa_id}")
 
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
-    print(f"message is {message}")
-
-    # Handle different message types
-    if "document" in message:
-        handle_document_message(message, wa_id)
-        return
-
-    message_body = message["text"]["body"]
-
-    # Check if this is a meeting request
-    if message_body.lower() == "schedule meeting":
-        # Create verification session
-        session_id = web3_service.create_signing_session(wa_id, None)
-        verify_url = f"https://immune-grand-bulldog.ngrok-free.app/verify/{session_id}"
-
-        response = f"""Please verify your wallet ownership first.
-        Click here to verify: {verify_url}"""
-
-        data = get_text_message_input(wa_id, response)
-        send_message(data)
-        return
+    # message_body = message["text"]["body"]
 
     # TODO: implement custom function here
     # response = generate_response(message_body)
 
-    # OpenAI Integration
-    response = generate_response(message_body, wa_id, name)
-    response = process_text_for_whatsapp(response)
+    # Check if the message is a document
+    if "document" in message:
+        return handle_document_message(message, wa_id, name)
 
-    data = get_text_message_input(current_app.config["RECIPIENT_WAID"], response)
-    send_message(data)
+    elif "text" in message:
+        message_body = message["text"]["body"]
+        response = generate_response(message_body, wa_id, name)
+        response = process_text_for_whatsapp(response)
+        data = get_text_message_input(wa_id, response)
+        return send_message(data)
+
+    # Handle unsupported message types
+    else:
+        response = (
+            "Sorry, I can only process text messages and PDF documents at the moment."
+        )
+        data = get_text_message_input(wa_id, response)
+        return send_message(data)
+
+    # OpenAI Integration
+    # response = generate_response(message_body, wa_id, name)
+    # response = process_text_for_whatsapp(response)
+
+    # data = get_text_message_input(current_app.config["RECIPIENT_WAID"], response)
+    # send_message(data)
 
 
 def is_valid_whatsapp_message(body):

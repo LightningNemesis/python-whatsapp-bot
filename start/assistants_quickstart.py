@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 import os
 import time
 
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 load_dotenv()
 OPEN_AI_API_KEY = os.getenv("OPEN_AI_API_KEY")
 client = OpenAI(api_key=OPEN_AI_API_KEY)
@@ -18,27 +21,49 @@ def upload_file(path):
     return file
 
 
-file = upload_file("../data/airbnb-faq.pdf")
+file_path = os.path.join(base_dir, "data", "airbnb-faq.pdf")
+file = upload_file(file_path)
+# file = upload_file("./data/airbnb-faq.pdf")
 
 
 # --------------------------------------------------------------
 # Create assistant
 # --------------------------------------------------------------
-def create_assistant(file):
+def create_assistant():
     """
     You currently cannot set the temperature for Assistant via the API.
     """
     assistant = client.beta.assistants.create(
         name="WhatsApp AirBnb Assistant",
         instructions="You're a helpful WhatsApp assistant that can assist guests that are staying in our Paris AirBnb. Use your knowledge base to best respond to customer queries. If you don't know the answer, say simply that you cannot help with question and advice to contact the host directly. Be friendly and funny.",
-        tools=[{"type": "retrieval"}],
-        model="gpt-4-1106-preview",
-        file_ids=[file.id],
+        # tools=[{"type": "retrieval"}],
+        model="gpt-4o-mini",
+        tools=[{"type": "file_search"}],
+    )
+
+    # Create a vector store caled "Airbnb FAQ"
+    vector_store = client.beta.vector_stores.create(name="Airbnb FAQ")
+    file_paths = [os.path.join(base_dir, "data", "airbnb-faq.pdf")]
+    file_streams = [open(path, "rb") for path in file_paths]
+    # Use the upload and poll SDK helper to upload the files, add them to the vector store,
+    # and poll the status of the file batch for completion.
+    file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+        vector_store_id=vector_store.id, files=file_streams
+    )
+
+    while file_batch.status != "completed":
+        print(file_batch.status)
+        print(file_batch.file_counts)
+
+    assistant = client.beta.assistants.update(
+        assistant_id=assistant.id,
+        tool_resources={"file_search": {"vector_store_ids": [vector_store.id]}},
     )
     return assistant
 
 
-assistant = create_assistant(file)
+# assistant = create_assistant(file)
+assistant = create_assistant()
 
 
 # --------------------------------------------------------------
@@ -81,7 +106,7 @@ def generate_response(message_body, wa_id, name):
     )
 
     # Run the assistant and get the new message
-    new_message = run_assistant(thread)
+    new_message = run_assistant(thread, assistant)
     print(f"To {name}:", new_message)
     return new_message
 
@@ -89,9 +114,10 @@ def generate_response(message_body, wa_id, name):
 # --------------------------------------------------------------
 # Run assistant
 # --------------------------------------------------------------
-def run_assistant(thread):
+def run_assistant(thread, assistant_obj):
     # Retrieve the Assistant
-    assistant = client.beta.assistants.retrieve("asst_7Wx2nQwoPWSf710jrdWTDlfE")
+    # assistant = client.beta.assistants.retrieve("asst_7Wx2nQwoPWSf710jrdWTDlfE")
+    assistant = client.beta.assistants.retrieve(assistant_obj.id)
 
     # Run the assistant
     run = client.beta.threads.runs.create(
@@ -116,10 +142,10 @@ def run_assistant(thread):
 # Test assistant
 # --------------------------------------------------------------
 
-new_message = generate_response("What's the check in time?", "123", "John")
+# new_message = generate_response("What's the check in time?", "123", "John")
 
-new_message = generate_response("What's the pin for the lockbox?", "456", "Sarah")
+# new_message = generate_response("What's the pin for the lockbox?", "456", "Sarah")
 
-new_message = generate_response("What was my previous question?", "123", "John")
+# new_message = generate_response("What was my previous question?", "123", "John")
 
 new_message = generate_response("What was my previous question?", "456", "Sarah")
