@@ -1,11 +1,10 @@
 import logging
-from flask import current_app, jsonify
-import json
-import requests
+
 
 from app.services.openai_service import generate_response
 from .document_utils import handle_document_message
 from .message_utils import get_text_message_input, send_message
+from .state_manager import state_manager, UserState
 import re
 
 
@@ -33,24 +32,107 @@ def process_text_for_whatsapp(text):
     return whatsapp_style_text
 
 
+def get_response_by_state(wa_id: str, name: str) -> str:
+    """
+    Get the appropriate response based on user's current state
+    """
+    current_state = state_manager.get_user_state(wa_id)
+
+    if current_state is None or current_state == UserState.INITIAL:
+        return (
+            f"Hello {name}! 👋\n\n"
+            "To proceed with verification, please upload:\n"
+            "1. Your PDF document\n"
+            "2. The corresponding signature.json file"
+        )
+
+    elif current_state == UserState.PDF_RECEIVED:
+        files = state_manager.get_user_files(wa_id)
+        return (
+            "I've received your PDF document. ✅\n\n"
+            "Please upload the signature.json file to complete verification."
+        )
+
+    elif current_state == UserState.JSON_RECEIVED:
+        return (
+            "I've received your signature file. ✅\n\n"
+            "Please upload the PDF document to complete verification."
+        )
+
+    elif current_state == UserState.VERIFICATION_COMPLETE:
+        verification_status = state_manager.get_verification_status(wa_id)
+        if verification_status:
+            return (
+                "Your document has been verified successfully. ✅\n\n"
+                "You can upload another set of documents for verification if needed."
+            )
+        else:
+            return (
+                "Previous verification failed. ❌\n\n"
+                "Please upload a new set of documents to try again:\n"
+                "1. Your PDF document\n"
+                "2. The corresponding signature.json file"
+            )
+
+    else:
+        return (
+            "Please upload both your PDF document and signature.json file for verification.\n\n"
+            "Note: You can send them in any order."
+        )
+
+
+# def process_whatsapp_message(body):
+#     wa_id = body["entry"][0]["changes"][0]["value"]["contacts"][0]["wa_id"]
+#     name = body["entry"][0]["changes"][0]["value"]["contacts"][0]["profile"]["name"]
+#     print(f"wa id is: {wa_id}")
+
+#     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
+#     # message_body = message["text"]["body"]
+
+#     # TODO: implement custom function here
+#     # response = generate_response(message_body)
+
+#     # Check if the message is a document
+#     if "document" in message:
+#         return handle_document_message(message, wa_id, name)
+
+#     elif "text" in message:
+#         message_body = message["text"]["body"]
+#         # OpenAI Integration
+#         response = generate_response(message_body, wa_id, name)
+#         response = process_text_for_whatsapp(response)
+#         data = get_text_message_input(wa_id, response)
+#         return send_message(data)
+
+#     # Handle unsupported message types
+#     else:
+#         response = (
+#             "Sorry, I can only process text messages and PDF documents at the moment."
+#         )
+#         data = get_text_message_input(wa_id, response)
+#         return send_message(data)
+
+
 def process_whatsapp_message(body):
+    """
+    Process incoming WhatsApp messages with state-based responses
+    """
+    # Extract user information
     wa_id = body["entry"][0]["changes"][0]["value"]["contacts"][0]["wa_id"]
     name = body["entry"][0]["changes"][0]["value"]["contacts"][0]["profile"]["name"]
-    print(f"wa id is: {wa_id}")
+
+    # Initialize user state if needed
+    state_manager.initialize_user(wa_id)
 
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
-    # message_body = message["text"]["body"]
 
-    # TODO: implement custom function here
-    # response = generate_response(message_body)
-
-    # Check if the message is a document
+    # Handle document messages
     if "document" in message:
         return handle_document_message(message, wa_id, name)
 
+    # Handle text messages with fixed responses
     elif "text" in message:
-        message_body = message["text"]["body"]
-        response = generate_response(message_body, wa_id, name)
+        response = get_response_by_state(wa_id, name)
         response = process_text_for_whatsapp(response)
         data = get_text_message_input(wa_id, response)
         return send_message(data)
@@ -58,17 +140,13 @@ def process_whatsapp_message(body):
     # Handle unsupported message types
     else:
         response = (
-            "Sorry, I can only process text messages and PDF documents at the moment."
+            "I can only process PDF documents and signature.json files.\n\n"
+            "Please upload:\n"
+            "1. Your PDF document\n"
+            "2. The corresponding signature.json file"
         )
         data = get_text_message_input(wa_id, response)
         return send_message(data)
-
-    # OpenAI Integration
-    # response = generate_response(message_body, wa_id, name)
-    # response = process_text_for_whatsapp(response)
-
-    # data = get_text_message_input(current_app.config["RECIPIENT_WAID"], response)
-    # send_message(data)
 
 
 def is_valid_whatsapp_message(body):

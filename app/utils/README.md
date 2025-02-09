@@ -130,3 +130,14 @@ Function verify_and_cleanup(wa_id, json_path, pdf_path):
         remove user data from user_files
         RETURN message to user
 ```
+
+# Pending work
+
+1. Implement guided response for introduction phase --> refer to Miro
+   - Restrict responses to introduction phase guidelines
+   - Prevent from answering abstract questions: Eg. How is the weather
+
+# Future work (not to be focussed on now):
+
+1. What happens if the user uploads 3 files: valid(pdf, json) & invalid(pdf or json)
+2. What ahppens if the user uploads 3 files: valid(pdf, json) & photo/txt file/unsupported file type
