@@ -55,6 +55,7 @@ class CalendlyClient:
                     "uuid": event_type.get("uri").split("/")[-1],
                     "duration": event_type.get("duration"),
                     "description": event_type.get("description"),
+                    "scheduling_url": event_type.get("scheduling_url"),  # Add this line
                 }
             )
 
@@ -65,6 +66,7 @@ class CalendlyClient:
         event_type_uuid: str,
         start_time: datetime,
         end_time: datetime,
+        verbose: bool = False,  # Add this parameter
     ) -> List[Dict]:
         """
         Retrieve available time slots for an event type.
@@ -73,6 +75,7 @@ class CalendlyClient:
             event_type_uuid (str): UUID of the event type
             start_time (datetime): Start of the range to check availability
             end_time (datetime): End of the range to check availability
+            verbose (bool): Whether to print debug information
 
         Returns:
             List[Dict]: Available time slots
@@ -83,8 +86,9 @@ class CalendlyClient:
         formatted_start = start_time.strftime("%Y-%m-%d") + "T24:00:00.000000Z"
         formatted_end = end_time.strftime("%Y-%m-%d") + "T24:00:00.000000Z"
 
-        print(f"Formatted Start: {formatted_start}")
-        print(f"Formatted End: {formatted_end}")
+        if verbose:  # Only print if verbose is True
+            print(f"Formatted Start: {formatted_start}")
+            print(f"Formatted End: {formatted_end}")
 
         querystring = {
             "event_type": f"https://api.calendly.com/event_types/{event_type_uuid}",
@@ -92,37 +96,43 @@ class CalendlyClient:
             "end_time": formatted_end,
         }
 
-        print("\nAPI Request Details:")
-        print(f"URL: {url}")
-        print("Query Parameters:")
-        for key, value in querystring.items():
-            print(f"  {key}: {value}")
+        if verbose:  # Only print if verbose is True
+            print("\nAPI Request Details:")
+            print(f"URL: {url}")
+            print("Query Parameters:")
+            for key, value in querystring.items():
+                print(f"  {key}: {value}")
 
         try:
             response = requests.request(
                 "GET", url, headers=self.headers, params=querystring
             )
-            print(f"\nResponse Status: {response.status_code}")
-            print(f"Response Body: {response.text[:1000]}")
+            if verbose:  # Only print if verbose is True
+                print(f"\nResponse Status: {response.status_code}")
+                print(f"Response Body: {response.text[:1000]}")
 
             response.raise_for_status()
             result = response.json()
             return result.get("collection", [])
 
         except requests.exceptions.RequestException as e:
-            print(f"\nError Details:")
-            print(f"Error Type: {type(e).__name__}")
-            print(f"Error Message: {str(e)}")
-            if hasattr(e.response, "text"):
-                print(f"Error Response: {e.response.text}")
+            if verbose:  # Only print if verbose is True
+                print(f"\nError Details:")
+                print(f"Error Type: {type(e).__name__}")
+                print(f"Error Message: {str(e)}")
+                if hasattr(e.response, "text"):
+                    print(f"Error Response: {e.response.text}")
             raise
 
-    def create_scheduling_link(self, event_type_uuid: str) -> Dict:
+    def create_scheduling_link(
+        self, event_type_uuid: str, verbose: bool = False
+    ) -> Dict:
         """
         Create a single-use scheduling link for an event type.
 
         Args:
             event_type_uuid (str): UUID of the event type
+            verbose (bool): Whether to print debug information
 
         Returns:
             Dict: Scheduling link details including the booking URL
@@ -135,8 +145,9 @@ class CalendlyClient:
             "owner_type": "EventType",
         }
 
-        print("\nCreating scheduling link...")
-        print(f"Event Type: {event_type_uuid}")
+        if verbose:
+            print("\nCreating scheduling link...")
+            print(f"Event Type: {event_type_uuid}")
 
         response = requests.post(url, headers=self.headers, json=payload)
         response.raise_for_status()

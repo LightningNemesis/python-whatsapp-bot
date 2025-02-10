@@ -11,24 +11,48 @@ def handle_webhook():
     # Get the webhook payload
     data = request.json
 
-    # Handle different event types
+    from flask import Flask, request, jsonify
+
+
+from calendly_client import CalendlyClient
+from openai_calendly import CalendlyAssistant
+from dotenv import load_dotenv
+import os
+
+app = Flask(__name__)
+
+# Initialize Calendly client and assistant
+load_dotenv()
+calendly_client = CalendlyClient(os.getenv("CALENDLY_TOKEN"))
+assistant = CalendlyAssistant(calendly_client)
+
+
+@app.route("/calendly-webhook", methods=["POST"])
+def handle_webhook():
+    # Get the webhook payload
+    data = request.json
+
+    # Process webhook with assistant
+    assistant_response = assistant.handle_webhook_event(data)
+
+    # Print details for logging
     event_type = data.get("event")
     if event_type == "invitee.created":
-        # Someone scheduled a meeting
         invitee = data["payload"]
-        print(invitee)
         print("\n=== New Meeting Scheduled! ===")
         print(f"Invitee: {invitee['name']} ({invitee['email']})")
         print(f"Start time: {invitee['scheduled_event']['start_time']}")
         print(f"Event Name: {invitee['scheduled_event']['name']}")
+        print("\nAssistant's Response:")
+        print(assistant_response)
         print("============================\n")
 
     elif event_type == "invitee.canceled":
-        # Someone canceled a meeting
         invitee = data["payload"]
-        print(invitee)
         print("\n=== Meeting Canceled! ===")
         print(f"Invitee: {invitee['name']}")
+        print("\nAssistant's Response:")
+        print(assistant_response)
         print("========================\n")
 
     # Always return a 200 status code to Calendly

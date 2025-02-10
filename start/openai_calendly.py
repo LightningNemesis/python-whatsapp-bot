@@ -145,3 +145,41 @@ class CalendlyAssistant:
                 return msg.content[0].text.value
 
         return "No response from assistant."
+
+    def handle_webhook_event(self, webhook_data: Dict) -> str:
+        """Handle incoming webhook events and generate appropriate responses."""
+        event_type = webhook_data.get("event")
+        payload = webhook_data.get("payload", {})
+
+        if event_type == "invitee.created":
+            # Someone scheduled a meeting
+            scheduled_event = payload.get("scheduled_event", {})
+            message = f"""
+    A new meeting has been scheduled!
+    - Name: {payload.get('name')}
+    - Email: {payload.get('email')}
+    - Event: {scheduled_event.get('name')}
+    - Start Time: {scheduled_event.get('start_time')}
+    - End Time: {scheduled_event.get('end_time')}
+    """
+            return self.send_message(
+                f"Process this new meeting notification: {message}"
+            )
+
+        elif event_type == "invitee.canceled":
+            # Someone canceled a meeting
+            cancellation = payload.get("cancellation", {})
+            message = f"""
+    A meeting has been canceled!
+    - Name: {payload.get('name')}
+    - Email: {payload.get('email')}
+    - Canceled by: {cancellation.get('canceled_by', 'Unknown')}
+    - Reason: {cancellation.get('reason', 'No reason provided')}
+    """
+            return self.send_message(
+                f"Process this cancellation notification: {message}"
+            )
+
+        return self.send_message(
+            f"Process this webhook event: {json.dumps(webhook_data)}"
+        )
