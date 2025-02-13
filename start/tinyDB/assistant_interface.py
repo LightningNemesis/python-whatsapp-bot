@@ -10,7 +10,8 @@ class InventoryAssistant:
         self.client = OpenAI(api_key=api_key)
         self.querier = InventoryQuerier()
 
-        self.system_message = """You are an Inventory Assistant that helps users query information about stored inventory items. 
+        self.system_message = """You are an Inventory Assistant that helps users query information about stored 
+        inventory items. 
         You can only answer questions related to the inventory database.
 
         You should:
@@ -35,7 +36,8 @@ class InventoryAssistant:
         - Give me details about Pipeline B
 
         For non-inventory questions, respond with:
-        "I can only help with questions about the inventory database. Please ask a question about the inventory items, their quantities, locations, or suppliers."
+        "I can only help with questions about the inventory database. Please ask a question about the inventory items, 
+        their quantities, locations, or suppliers."
         """
 
     async def process_query(self, user_query: str) -> str:

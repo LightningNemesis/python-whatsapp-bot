@@ -81,38 +81,6 @@ def get_response_by_state(wa_id: str, name: str) -> str:
         )
 
 
-# def process_whatsapp_message(body):
-#     wa_id = body["entry"][0]["changes"][0]["value"]["contacts"][0]["wa_id"]
-#     name = body["entry"][0]["changes"][0]["value"]["contacts"][0]["profile"]["name"]
-#     print(f"wa id is: {wa_id}")
-
-#     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
-#     # message_body = message["text"]["body"]
-
-#     # TODO: implement custom function here
-#     # response = generate_response(message_body)
-
-#     # Check if the message is a document
-#     if "document" in message:
-#         return handle_document_message(message, wa_id, name)
-
-#     elif "text" in message:
-#         message_body = message["text"]["body"]
-#         # OpenAI Integration
-#         response = generate_response(message_body, wa_id, name)
-#         response = process_text_for_whatsapp(response)
-#         data = get_text_message_input(wa_id, response)
-#         return send_message(data)
-
-#     # Handle unsupported message types
-#     else:
-#         response = (
-#             "Sorry, I can only process text messages and PDF documents at the moment."
-#         )
-#         data = get_text_message_input(wa_id, response)
-#         return send_message(data)
-
-
 def process_whatsapp_message(body):
     """
     Process incoming WhatsApp messages with state-based responses
