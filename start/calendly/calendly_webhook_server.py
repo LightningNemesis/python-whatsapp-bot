@@ -14,8 +14,8 @@ def handle_webhook():
     from flask import Flask, request, jsonify
 
 
-from calendly_client import CalendlyClient
-from openai_calendly import CalendlyAssistant
+from start.calendly.calendly_client import CalendlyClient
+from start.calendly.openai_calendly import CalendlyAssistant
 from dotenv import load_dotenv
 import os
 
