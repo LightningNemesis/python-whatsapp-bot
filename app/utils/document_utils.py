@@ -215,11 +215,25 @@ def verify_documents(wa_id):
         print(f"Verification result: {'✅ Valid' if is_verified else '❌ Invalid'}")
         logging.info(f"Verification result for user {wa_id}: {is_verified}")
 
-        message = (
-            "✅ Verification complete!\n\n"
-            f"📄 Document: {files.get('pdf_name', 'document.pdf')}\n"
-            f"🔍 Verification result: {'Valid ✅' if is_verified else 'Invalid ❌'}"
-        )
+        if is_verified:
+            message = (
+                "✅ Verification complete!\n\n"
+                f"📄 Document: {files.get('pdf_name', 'document.pdf')}\n"
+                f"🔍 Verification result: Valid ✅\n\n"
+                "I can help you query our inventory system. Try asking:\n\n"
+                "1. What items are in Storage Tank A?\n"
+                "2. How much Natural Gas do we have?\n"
+                "3. Show me all suppliers\n"
+                "4. What's our total inventory in MCF?\n"
+                "5. Give me details about Pipeline B"
+            )
+        else:
+            message = (
+                "❌ Verification failed\n\n"
+                "Please upload a new set of documents to try again:\n"
+                "1. Your PDF document\n"
+                "2. The corresponding signature.json file"
+            )
 
         state_manager.set_verification_status(wa_id, is_verified)
         logging.info(f"Verification status set for user {wa_id}: {is_verified}")
@@ -228,7 +242,8 @@ def verify_documents(wa_id):
         print(f"❌ File not found: {str(e)}")
         logging.error(f"File access error for user {wa_id}: {str(e)}")
         message = (
-            "❌ Verification failed: Files not found. Please upload both files again.\n\n"
+            "❌ Verification failed: Files not found\n\n"
+            "Please upload both files again:\n"
             "1. Your PDF document\n"
             "2. The corresponding signature.json file"
         )
@@ -236,7 +251,12 @@ def verify_documents(wa_id):
     except Exception as e:
         print(f"❌ Verification error: {str(e)}")
         logging.error(f"Verification error for user {wa_id}: {str(e)}", exc_info=True)
-        message = f"❌ Verification failed: {str(e)}"
+        message = (
+            "❌ Verification failed\n\n"
+            "Please upload a new set of documents to try again:\n"
+            "1. Your PDF document\n"
+            "2. The corresponding signature.json file"
+        )
         state_manager.clear_user_state(wa_id)
     finally:
         print("\n=== Cleaning up files ===")

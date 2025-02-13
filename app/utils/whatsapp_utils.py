@@ -2,10 +2,15 @@ import logging
 
 
 from app.services.openai_service import generate_response
+from app.services.inventory_service import InventoryAssistantService
 from .document_utils import handle_document_message
 from .message_utils import get_text_message_input, send_message
 from .state_manager import state_manager, UserState
 import re
+import asyncio
+
+# Initialize the InventoryAssistantService
+inventory_assistant = InventoryAssistantService()
 
 
 def log_http_response(response):
@@ -32,7 +37,7 @@ def process_text_for_whatsapp(text):
     return whatsapp_style_text
 
 
-def get_response_by_state(wa_id: str, name: str) -> str:
+async def get_response_by_state(wa_id: str, name: str, message_text: str = None) -> str:
     """
     Get the appropriate response based on user's current state
     """
@@ -61,10 +66,27 @@ def get_response_by_state(wa_id: str, name: str) -> str:
 
     elif current_state == UserState.VERIFICATION_COMPLETE:
         verification_status = state_manager.get_verification_status(wa_id)
-        if verification_status:
+        if verification_status and message_text:
+            # Only process inventory queries after successful verification and when there's a message
+            try:
+                response = await inventory_assistant.process_query(message_text)
+                return response
+            except Exception as e:
+                logging.error(f"Error processing inventory query: {e}")
+                return (
+                    "I can help you query our inventory system. Try asking questions like:\n"
+                    "- What's in Storage Tank A?\n"
+                    "- How much Natural Gas do we have?\n"
+                    "- Who supplies our Diesel Fuel?"
+                )
+        elif verification_status:
             return (
                 "Your document has been verified successfully. ✅\n\n"
-                "You can upload another set of documents for verification if needed."
+                "You can now query our inventory system. Try asking questions like:\n"
+                "- What's in Storage Tank A?\n"
+                "- How much Natural Gas do we have?\n"
+                "- Who supplies our Diesel Fuel?\n\n"
+                "Or upload another set of documents for verification if needed."
             )
         else:
             return (
@@ -98,9 +120,11 @@ def process_whatsapp_message(body):
     if "document" in message:
         return handle_document_message(message, wa_id, name)
 
-    # Handle text messages with fixed responses
+    # Handle text messages
     elif "text" in message:
-        response = get_response_by_state(wa_id, name)
+        message_text = message["text"]["body"]
+        # Since get_response_by_state is now async, we need to handle it properly
+        response = asyncio.run(get_response_by_state(wa_id, name, message_text))
         response = process_text_for_whatsapp(response)
         data = get_text_message_input(wa_id, response)
         return send_message(data)
