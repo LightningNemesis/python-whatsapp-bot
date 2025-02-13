@@ -9,7 +9,11 @@ from .utils.whatsapp_utils import (
     is_valid_whatsapp_message,
 )
 
+from app.services.calendly_service import CalendlyAssistantService
+from app.utils.message_utils import send_message, get_text_message_input
+
 webhook_blueprint = Blueprint("webhook", __name__)
+calendly_assistant = CalendlyAssistantService()
 
 
 def handle_message():
@@ -81,9 +85,125 @@ def verify():
 def webhook_get():
     return verify()
 
+
 @webhook_blueprint.route("/webhook", methods=["POST"])
 @signature_required
 def webhook_post():
     return handle_message()
 
 
+@webhook_blueprint.route("/calendly-webhook", methods=["POST"])
+def calendly_webhook():
+    """Handle incoming Calendly webhook events"""
+    data = request.json
+    logging.info(f"Received Calendly webhook with data: {json.dumps(data, indent=2)}")
+
+    try:
+        event_type = data.get("event")
+        payload = data.get("payload", {})
+
+        # Handle new meeting scheduled
+        if event_type == "invitee.created":
+            # Extract event details (corrected path)
+            scheduled_event = payload.get("scheduled_event", {})
+            event_name = payload.get("event_name", "Not provided")
+            event_start_time = scheduled_event.get("start_time", "Not provided")
+
+            # Extract tracking data
+            tracking = payload.get("tracking", {})
+            custom_tracking = tracking.get("custom", {})
+
+            # Try multiple ways to get WhatsApp ID
+            wa_id = (
+                tracking.get("whatsapp_id")
+                or custom_tracking.get("whatsapp_id")
+                or tracking.get("utm_source")
+                or (
+                    custom_tracking.get("source") == "whatsapp"
+                    and tracking.get("utm_source")
+                )
+            )
+
+            logging.info(f"Extracted tracking data: {json.dumps(tracking, indent=2)}")
+            logging.info(f"Found WhatsApp ID: {wa_id}")
+
+            # Create meeting confirmation message
+            message = (
+                "🗓️ New Meeting Scheduled!\n\n"
+                f"👤 Name: {payload.get('name', 'Not provided')}\n"
+                f"📧 Email: {payload.get('email', 'Not provided')}\n"
+                f"📅 Event: {event_name}\n"
+                f"⏰ Start: {event_start_time}\n"
+                f"⌛ Duration: {scheduled_event.get('duration')} minutes\n"
+                f"📝 Status: Confirmed"
+            )
+
+            if scheduled_event.get("location"):
+                location_info = scheduled_event.get("location", {})
+                if isinstance(location_info, dict) and location_info.get("join_url"):
+                    message += f"\n📍 Location: {location_info.get('join_url')}"
+
+            # Send WhatsApp notification if ID is available
+            if wa_id:
+                logging.info(f"Sending meeting confirmation to WhatsApp ID: {wa_id}")
+                try:
+                    response = send_message(get_text_message_input(wa_id, message))
+                    logging.info(f"WhatsApp API response: {response}")
+                except Exception as e:
+                    logging.error(f"Failed to send WhatsApp message: {e}")
+            else:
+                logging.warning("No WhatsApp ID found in tracking data")
+
+        # Handle meeting cancellation
+        elif event_type == "invitee.canceled":
+            # Extract cancellation details
+            scheduled_event = payload.get("scheduled_event", {})
+            event_name = payload.get("event_name", "Not provided")
+            event_start_time = scheduled_event.get("start_time", "Not provided")
+            cancellation = payload.get("cancellation", {})
+
+            # Extract tracking data
+            tracking = payload.get("tracking", {})
+            custom_tracking = tracking.get("custom", {})
+
+            wa_id = (
+                tracking.get("whatsapp_id")
+                or custom_tracking.get("whatsapp_id")
+                or tracking.get("utm_source")
+                or (
+                    custom_tracking.get("source") == "whatsapp"
+                    and tracking.get("utm_source")
+                )
+            )
+
+            # Create cancellation message
+            message = (
+                "❌ Meeting Canceled\n\n"
+                f"👤 Name: {payload.get('name', 'Not provided')}\n"
+                f"📅 Event: {event_name}\n"
+                f"⏰ Original Time: {event_start_time}\n"
+                f"❓ Reason: {cancellation.get('reason', 'No reason provided')}\n"
+                f"📝 Status: Canceled"
+            )
+
+            # Send WhatsApp notification if ID is available
+            if wa_id:
+                logging.info(
+                    f"Sending cancellation notification to WhatsApp ID: {wa_id}"
+                )
+                try:
+                    response = send_message(get_text_message_input(wa_id, message))
+                    logging.info(f"WhatsApp API response: {response}")
+                except Exception as e:
+                    logging.error(f"Failed to send WhatsApp message: {e}")
+            else:
+                logging.warning("No WhatsApp ID found in tracking data")
+
+        else:
+            logging.info(f"Received unhandled event type: {event_type}")
+
+        return jsonify({"status": "success"}), 200
+
+    except Exception as e:
+        logging.error(f"Error processing Calendly webhook: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500

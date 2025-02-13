@@ -8,9 +8,11 @@ from .message_utils import get_text_message_input, send_message
 from .state_manager import state_manager, UserState
 import re
 import asyncio
+from app.services.calendly_service import CalendlyAssistantService
 
 # Initialize the InventoryAssistantService
 inventory_assistant = InventoryAssistantService()
+calendly_assistant = CalendlyAssistantService()
 
 
 def log_http_response(response):
@@ -67,7 +69,21 @@ async def get_response_by_state(wa_id: str, name: str, message_text: str = None)
     elif current_state == UserState.VERIFICATION_COMPLETE:
         verification_status = state_manager.get_verification_status(wa_id)
         if verification_status and message_text:
-            # Only process inventory queries after successful verification and when there's a message
+            # Process Calendly queries
+            if any(
+                word in message_text.lower()
+                for word in ["schedule", "meeting", "book", "appointment"]
+            ):
+                try:
+                    calendly_response = await calendly_assistant.process_query(
+                        message_text, wa_id
+                    )
+                    return calendly_response
+                except Exception as e:
+                    print(f"Error processing Calendly query: {e}")
+                    return "I encountered an error with scheduling. Please try again."
+
+            # Process inventory queries
             try:
                 response = await inventory_assistant.process_query(message_text)
                 return response

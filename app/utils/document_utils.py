@@ -220,12 +220,18 @@ def verify_documents(wa_id):
                 "✅ Verification complete!\n\n"
                 f"📄 Document: {files.get('pdf_name', 'document.pdf')}\n"
                 f"🔍 Verification result: Valid ✅\n\n"
-                "I can help you query our inventory system. Try asking:\n\n"
+                "I can help you with the following:\n\n"
+                "📦 Inventory Queries:\n"
                 "1. What items are in Storage Tank A?\n"
                 "2. How much Natural Gas do we have?\n"
                 "3. Show me all suppliers\n"
                 "4. What's our total inventory in MCF?\n"
-                "5. Give me details about Pipeline B"
+                "5. Give me details about Pipeline B\n\n"
+                "📅 Meeting Scheduling:\n"
+                "1. Show available meeting types\n"
+                "2. Schedule a meeting\n"
+                "3. Book a consultation\n\n"
+                "Just type your query and I'll help you out!"
             )
         else:
             message = (
