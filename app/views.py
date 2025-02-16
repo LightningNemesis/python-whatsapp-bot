@@ -1,5 +1,6 @@
 import logging
 import json
+from datetime import datetime
 
 from flask import Blueprint, request, jsonify, current_app
 
@@ -94,116 +95,116 @@ def webhook_post():
 
 @webhook_blueprint.route("/calendly-webhook", methods=["POST"])
 def calendly_webhook():
-    """Handle incoming Calendly webhook events"""
+    """Handle Calendly webhook events"""
+    print("\n=== Received Calendly Webhook ===")
     data = request.json
-    logging.info(f"Received Calendly webhook with data: {json.dumps(data, indent=2)}")
+    print(f"Event Type: {data.get('event')}")
+    print("Full webhook payload:")
+    print(json.dumps(data, indent=2))
 
     try:
-        event_type = data.get("event")
+        # Extract the payload
         payload = data.get("payload", {})
+        scheduled_event = payload.get("scheduled_event", {})
 
-        # Handle new meeting scheduled
+        # Get essential data
+        event_uri = payload.get("event")
+        event_type_uri = scheduled_event.get("event_type")
+        event_status = scheduled_event.get("status")
+
+        if not event_uri:
+            print("No event URI in payload")
+            return (
+                jsonify({"status": "error", "message": "No event URI in payload"}),
+                400,
+            )
+
+        # Get the mapper instance from app config
+        booking_mapper = current_app.config.get("booking_mapper")
+        if not booking_mapper:
+            print("No booking mapper found in app config")
+            return (
+                jsonify(
+                    {"status": "error", "message": "Booking mapper not configured"}
+                ),
+                500,
+            )
+
+        # Process the event based on type
+        event_type = data.get("event")
+
         if event_type == "invitee.created":
-            # Extract event details (corrected path)
-            scheduled_event = payload.get("scheduled_event", {})
-            event_name = payload.get("event_name", "Not provided")
-            event_start_time = scheduled_event.get("start_time", "Not provided")
+            # Extract event type ID from URI
+            event_type_id = event_type_uri.split("/")[-1]
 
-            # Extract tracking data
-            tracking = payload.get("tracking", {})
-            custom_tracking = tracking.get("custom", {})
+            print(f"\nNew booking created:")
+            print(f"Event URI: {event_uri}")
+            print(f"Event Type: {event_type_uri}")
+            print(f"Event Type ID: {event_type_id}")
+            print(f"Status: {event_status}")
 
-            # Try multiple ways to get WhatsApp ID
-            wa_id = (
-                tracking.get("whatsapp_id")
-                or custom_tracking.get("whatsapp_id")
-                or tracking.get("utm_source")
-                or (
-                    custom_tracking.get("source") == "whatsapp"
-                    and tracking.get("utm_source")
+            # Get WhatsApp ID from mapping
+            whatsapp_id = booking_mapper.get_whatsapp_id_for_event_type(event_type_id)
+
+            if whatsapp_id:
+                print(f"Found WhatsApp ID: {whatsapp_id}")
+
+                # Get meeting details
+                start_time = scheduled_event.get("start_time")
+                end_time = scheduled_event.get("end_time")
+                meeting_name = scheduled_event.get("name")
+                location = scheduled_event.get("location", {})
+                join_url = location.get("join_url")
+
+                # Format times
+                start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+
+                # Create WhatsApp message
+                message = (
+                    f"🎉 *Meeting Confirmed!*\n\n"
+                    f"📅 Meeting: {meeting_name}\n"
+                    f"📆 Date: {start.strftime('%B %d, %Y')}\n"
+                    f"⏰ Time: {start.strftime('%I:%M %p')} - {end.strftime('%I:%M %p')} UTC\n"
                 )
+
+                if join_url:
+                    message += f"\n🔗 Join here: {join_url}\n"
+
+                message += "\nSee you there! 👋"
+
+                # Send WhatsApp confirmation
+                data = get_text_message_input(whatsapp_id, message)
+                send_message(data)
+
+            # Add to mapper anyway for tracking
+            booking_mapper.add_scheduled_event(
+                event_uri=event_uri,
+                whatsapp_id=whatsapp_id,
+                event_type_id=event_type_id,
+                status="scheduled",
             )
 
-            logging.info(f"Extracted tracking data: {json.dumps(tracking, indent=2)}")
-            logging.info(f"Found WhatsApp ID: {wa_id}")
-
-            # Create meeting confirmation message
-            message = (
-                "🗓️ New Meeting Scheduled!\n\n"
-                f"👤 Name: {payload.get('name', 'Not provided')}\n"
-                f"📧 Email: {payload.get('email', 'Not provided')}\n"
-                f"📅 Event: {event_name}\n"
-                f"⏰ Start: {event_start_time}\n"
-                f"⌛ Duration: {scheduled_event.get('duration')} minutes\n"
-                f"📝 Status: Confirmed"
-            )
-
-            if scheduled_event.get("location"):
-                location_info = scheduled_event.get("location", {})
-                if isinstance(location_info, dict) and location_info.get("join_url"):
-                    message += f"\n📍 Location: {location_info.get('join_url')}"
-
-            # Send WhatsApp notification if ID is available
-            if wa_id:
-                logging.info(f"Sending meeting confirmation to WhatsApp ID: {wa_id}")
-                try:
-                    response = send_message(get_text_message_input(wa_id, message))
-                    logging.info(f"WhatsApp API response: {response}")
-                except Exception as e:
-                    logging.error(f"Failed to send WhatsApp message: {e}")
-            else:
-                logging.warning("No WhatsApp ID found in tracking data")
-
-        # Handle meeting cancellation
         elif event_type == "invitee.canceled":
-            # Extract cancellation details
-            scheduled_event = payload.get("scheduled_event", {})
-            event_name = payload.get("event_name", "Not provided")
-            event_start_time = scheduled_event.get("start_time", "Not provided")
-            cancellation = payload.get("cancellation", {})
+            whatsapp_id = booking_mapper.get_whatsapp_id_for_event(event_uri)
+            if whatsapp_id:
+                print(f"\nBooking canceled for WhatsApp ID: {whatsapp_id}")
+                booking_mapper.update_event_status(event_uri, "canceled")
 
-            # Extract tracking data
-            tracking = payload.get("tracking", {})
-            custom_tracking = tracking.get("custom", {})
-
-            wa_id = (
-                tracking.get("whatsapp_id")
-                or custom_tracking.get("whatsapp_id")
-                or tracking.get("utm_source")
-                or (
-                    custom_tracking.get("source") == "whatsapp"
-                    and tracking.get("utm_source")
+                # Send cancellation notification
+                message = (
+                    "❌ *Meeting Canceled*\n\n"
+                    f"The meeting scheduled for {scheduled_event.get('start_time')} has been canceled.\n\n"
+                    "Need to reschedule? Just let me know!"
                 )
-            )
 
-            # Create cancellation message
-            message = (
-                "❌ Meeting Canceled\n\n"
-                f"👤 Name: {payload.get('name', 'Not provided')}\n"
-                f"📅 Event: {event_name}\n"
-                f"⏰ Original Time: {event_start_time}\n"
-                f"❓ Reason: {cancellation.get('reason', 'No reason provided')}\n"
-                f"📝 Status: Canceled"
-            )
-
-            # Send WhatsApp notification if ID is available
-            if wa_id:
-                logging.info(
-                    f"Sending cancellation notification to WhatsApp ID: {wa_id}"
-                )
-                try:
-                    response = send_message(get_text_message_input(wa_id, message))
-                    logging.info(f"WhatsApp API response: {response}")
-                except Exception as e:
-                    logging.error(f"Failed to send WhatsApp message: {e}")
-            else:
-                logging.warning("No WhatsApp ID found in tracking data")
-
-        else:
-            logging.info(f"Received unhandled event type: {event_type}")
+                data = get_text_message_input(whatsapp_id, message)
+                send_message(data)
 
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
-        logging.error(f"Error processing Calendly webhook: {str(e)}", exc_info=True)
+        print(f"Error processing webhook: {str(e)}")
+        print(f"Error type: {type(e)}")
+        current_app.logger.error(f"Error processing Calendly webhook: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500

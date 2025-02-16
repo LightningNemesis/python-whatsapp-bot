@@ -125,14 +125,22 @@ class CalendlyClient:
             raise
 
     def create_scheduling_link(
-        self, event_type_uuid: str, verbose: bool = False
+        self,
+        event_type_uuid: str,
+        tracking: Optional[Dict] = None,
+        start_time: Optional[str] = None,
+        whatsapp_id: Optional[str] = None,
+        booking_mapper=None,
     ) -> Dict:
         """
         Create a single-use scheduling link for an event type.
 
         Args:
             event_type_uuid (str): UUID of the event type
-            verbose (bool): Whether to print debug information
+            tracking (Dict, optional): Tracking data for the link
+            start_time (str, optional): ISO formatted start time
+            whatsapp_id (str, optional): WhatsApp ID for tracking
+            booking_mapper: Booking mapper instance to store correlations
 
         Returns:
             Dict: Scheduling link details including the booking URL
@@ -145,13 +153,26 @@ class CalendlyClient:
             "owner_type": "EventType",
         }
 
-        if verbose:
-            print("\nCreating scheduling link...")
-            print(f"Event Type: {event_type_uuid}")
+        if tracking:
+            payload["tracking"] = tracking
+
+        if start_time:
+            payload["start_time_preferences"] = [start_time]
 
         response = requests.post(url, headers=self.headers, json=payload)
-        response.raise_for_status()
-        return response.json()
+        response_data = response.json()
+
+        # Store the mapping if we have both mapper and whatsapp_id
+        if booking_mapper and whatsapp_id:
+            event_uri = response_data["resource"]["owner"]
+            booking_mapper.add_scheduled_event(
+                event_uri=event_uri,
+                whatsapp_id=whatsapp_id,
+                event_type_id=event_type_uuid,
+                status="pending",
+            )
+
+        return response_data
 
     def create_webhook(
         self, callback_url: str, events: List[str], scope: str = "user"
@@ -167,9 +188,11 @@ class CalendlyClient:
         Returns:
             Dict: Webhook subscription details
         """
+        print("\n=== Creating Webhook ===")
         url = "https://api.calendly.com/webhook_subscriptions"
 
         # Get user and organization info
+        print("Getting user data...")
         user_data = self.get_user()
         user_uri = user_data["resource"]["uri"]
         org_uri = user_data["resource"]["current_organization"]
@@ -184,12 +207,18 @@ class CalendlyClient:
         if scope == "user":
             payload["user"] = user_uri
 
-        print("\nCreating webhook subscription...")
-        print(f"Callback URL: {callback_url}")
-        print(f"Events: {events}")
-        print(f"Scope: {scope}")
+        print(f"Request URL: {url}")
+        print(f"Request Payload: {json.dumps(payload, indent=2)}")
+        print(
+            f"Request Headers: {json.dumps({k: '***' if k == 'Authorization' else v for k, v in self.headers.items()}, indent=2)}"
+        )
 
         response = requests.post(url, headers=self.headers, json=payload)
+        print(f"Response Status Code: {response.status_code}")
+        print(
+            f"Response Content: {response.text[:1000]}"
+        )  # First 1000 chars to avoid too much output
+
         response.raise_for_status()
         return response.json()
 
@@ -203,19 +232,31 @@ class CalendlyClient:
         Returns:
             List[Dict]: List of webhook subscriptions
         """
+        print("\n=== Listing Webhooks ===")
         url = "https://api.calendly.com/webhook_subscriptions"
 
         # Get user and organization info
+        print("Getting user data...")
         user_data = self.get_user()
         org_uri = user_data["resource"]["current_organization"]
         user_uri = user_data["resource"]["uri"]
 
         params = {"organization": org_uri, "scope": scope}
-
         if scope == "user":
             params["user"] = user_uri
 
+        print(f"Request URL: {url}")
+        print(f"Request Parameters: {json.dumps(params, indent=2)}")
+        print(
+            f"Request Headers: {json.dumps({k: '***' if k == 'Authorization' else v for k, v in self.headers.items()}, indent=2)}"
+        )
+
         response = requests.get(url, headers=self.headers, params=params)
+        print(f"Response Status Code: {response.status_code}")
+        print(
+            f"Response Content: {response.text[:1000]}"
+        )  # First 1000 chars to avoid too much output
+
         response.raise_for_status()
         return response.json()["collection"]
 

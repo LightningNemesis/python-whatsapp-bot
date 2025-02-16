@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional
 import re
 import json
+from flask import current_app
 
 
 class CalendlyAssistantService:
@@ -100,7 +101,11 @@ class CalendlyAssistantService:
                     response = "📅 Available Meeting Types:\n\n"
                     for i, event_type in enumerate(event_types, 1):
                         scheduling_link = self.create_scheduling_link(
-                            event_type["uuid"], wa_id
+                            event_type["uuid"],
+                            wa_id,
+                            booking_mapper=current_app.config[
+                                "booking_mapper"
+                            ],  # Add this
                         )
                         description = event_type.get(
                             "description", "No description available"
@@ -184,6 +189,7 @@ class CalendlyAssistantService:
                         event_types[0]["uuid"],
                         wa_id,
                         start_time=target_date.isoformat(),
+                        booking_mapper=current_app.config["booking_mapper"],
                     )
 
                     if scheduling_link:
@@ -207,7 +213,9 @@ class CalendlyAssistantService:
                     response = "📅 Available Meeting Options:\n\n"
                     for event_type in event_types:
                         scheduling_link = self.create_scheduling_link(
-                            event_type["uuid"], wa_id
+                            event_type["uuid"],
+                            wa_id,
+                            booking_mapper=current_app.config["booking_mapper"],
                         )
                         response += (
                             f"• {event_type['name']}\n"
@@ -345,7 +353,11 @@ class CalendlyAssistantService:
             return "Sorry, I couldn't create the booking link. Please try again."
 
     def create_scheduling_link(
-        self, event_type_uuid: str, wa_id: str, start_time: Optional[str] = None
+        self,
+        event_type_uuid: str,
+        wa_id: str,
+        start_time: Optional[str] = None,
+        booking_mapper=None,  # Add this parameter
     ) -> Optional[str]:
         """Create a scheduling link with WhatsApp tracking"""
         try:
@@ -363,8 +375,26 @@ class CalendlyAssistantService:
             print(f"Tracking data: {json.dumps(tracking_data, indent=2)}")
 
             result = self.calendly_client.create_scheduling_link(
-                event_type_uuid, tracking=tracking_data, start_time=start_time
+                event_type_uuid=event_type_uuid,
+                tracking=tracking_data,
+                start_time=start_time,
             )
+
+            # If we have the booking mapper, store the mapping after creating the link
+            if result and isinstance(result, dict) and booking_mapper:
+                booking_url = result.get("resource", {}).get("booking_url")
+                event_uri = result.get("resource", {}).get("owner")
+                if booking_url and event_uri:
+                    try:
+                        booking_mapper.add_scheduled_event(
+                            event_uri=event_uri,
+                            whatsapp_id=wa_id,
+                            event_type_id=event_type_uuid,
+                            status="pending",
+                        )
+                    except Exception as e:
+                        print(f"Error storing booking mapping: {e}")
+                        # Continue even if mapping fails
 
             if result and isinstance(result, dict):
                 booking_url = result.get("resource", {}).get("booking_url")
