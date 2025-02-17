@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 
 from app.utils.message_utils import get_text_message_input, send_message
 from app.utils.state_manager import state_manager, UserState
-from app.services.web3_service import verify_object_signature
+from app.services.web3_service import verify_object_signature_no_data
 
 
 def handle_document_message(message, wa_id, name):
@@ -71,7 +71,7 @@ def handle_document_message(message, wa_id, name):
                 logging.info(
                     f"Both files received, starting verification for user {wa_id}"
                 )
-                return verify_documents(wa_id)
+                return verify_documents(wa_id, file_path)
             else:
                 return send_json_request_message(wa_id, filename)
 
@@ -175,7 +175,7 @@ def save_document(document, wa_id):
     return temp_path
 
 
-def verify_documents(wa_id):
+def verify_documents(wa_id, pdf_path=None):
     """
     Verify the uploaded documents
     """
@@ -207,10 +207,9 @@ def verify_documents(wa_id):
 
         print("Verifying signature...")
         logging.info(f"Verifying signature for user {wa_id}")
-        is_verified = verify_object_signature(
-            address=signature_data["address"],
-            data=signature_data["data"],
-            signature=signature_data["signature"],
+        is_verified = verify_object_signature_no_data(
+            pdf_path,
+            signature_data,
         )
         print(f"Verification result: {'✅ Valid' if is_verified else '❌ Invalid'}")
         logging.info(f"Verification result for user {wa_id}: {is_verified}")
