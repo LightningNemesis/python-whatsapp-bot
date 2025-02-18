@@ -204,6 +204,17 @@ def verify_documents(wa_id, pdf_path=None):
         logging.info(f"Reading signature data from JSON file for user {wa_id}")
         with open(files["json_path"], "r") as f:
             signature_data = json.load(f)
+            
+        # Ensure message came from the file the signature is created from
+        phone_number = signature_data.get("data", {}).get("phone_number", "")
+        if (wa_id != phone_number):
+            logging.info("Document doesn't belong to this phone number")
+            message = (
+                "❌ Verification failed\n\n"
+                "Looks like this document wasn't issued to you. Upload the document issued to your contact number.\n"
+            )
+            state_manager.clear_user_state(wa_id)
+            return send_message(get_text_message_input(wa_id, message))
 
         print("Verifying signature...")
         logging.info(f"Verifying signature for user {wa_id}")
