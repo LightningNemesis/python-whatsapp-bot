@@ -7,6 +7,11 @@ from datetime import datetime
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
+# Load environment variables
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
+
 
 def extract_text_from_pdf(pdf_path):
     """
@@ -193,7 +198,7 @@ def extract_text_from_pdf(pdf_path):
 
 def verify_object_signature_no_data(file_path: str, signature: dict) -> bool:
 
-    w3 = Web3(Web3.HTTPProvider("http://localhost:8545"))
+    w3 = Web3(Web3.HTTPProvider(os.getenv("AIRAS_RPC_URL")))
 
     # Extract text from PDF
     document_text = extract_text_from_pdf(file_path)
@@ -226,14 +231,23 @@ def verify_object_signature_no_data(file_path: str, signature: dict) -> bool:
 
         owner_account = w3.eth.account.from_key(owner_private_key)
         print(f"Contract owner address: {owner_account.address}")
+        print(f"Current account balance: {w3.eth.get_balance(owner_account.address)}")
 
         # Contract call
         gas_estimate = contract.functions.verifySignature(
             document_text, phone_number, signature["signature"]
         ).estimate_gas({"from": owner_account.address})
 
-        gas_limit = int(gas_estimate * 1.2)
+        # Use exact estimate without buffer
+        gas_limit = gas_estimate
+        # Reduce gas price by 20%
+        gas_price = w3.eth.gas_price
+
+        estimated_cost = gas_price * gas_estimate
         print(f"Gas estimate: {gas_estimate}, limit: {gas_limit}")
+        print(f"Reduced gas price: {gas_price}")
+        print(f"Estimated cost in wei: {estimated_cost}")
+        print(f"Estimated cost in ether: {w3.from_wei(estimated_cost, 'ether')}")
 
         tx = contract.functions.verifySignature(
             document_text, phone_number, signature["signature"]
@@ -242,7 +256,7 @@ def verify_object_signature_no_data(file_path: str, signature: dict) -> bool:
                 "from": owner_account.address,
                 "nonce": w3.eth.get_transaction_count(owner_account.address),
                 "gas": gas_limit,
-                "gasPrice": w3.eth.gas_price,
+                "gasPrice": gas_price,
                 "chainId": w3.eth.chain_id,
             }
         )
@@ -347,7 +361,7 @@ def sign_object(private_key: str, data: dict) -> dict:
 
 def sign_pdf_text(pdf_path, wa_id):
     try:
-        w3 = Web3(Web3.HTTPProvider("http://localhost:8545"))
+        w3 = Web3(Web3.HTTPProvider(os.getenv("AIRAS_RPC_URL")))
 
         # Extract text from PDF
         extracted_text = extract_text_from_pdf(pdf_path)
@@ -445,25 +459,25 @@ def sign_pdf_text(pdf_path, wa_id):
 
 
 # Test code
-# if __name__ == "__main__":
-#     base_dir = os.path.dirname(
-#         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-#     )
-#     file_path = os.path.join(base_dir, "data", "airbnb-faq.pdf")
+if __name__ == "__main__":
+    base_dir = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    file_path = os.path.join(base_dir, "data", "airbnb-faq.pdf")
 
-#     # Sign the PDF text
-#     signature_data, signature_path = sign_pdf_text(file_path, wa_id="12139135416")
+    # Sign the PDF text
+    signature_data, signature_path = sign_pdf_text(file_path, wa_id="12139135416")
 
-#     # Print the signature details (now accessing the tuple correctly)
-#     print("\n=== Signature Details ===")
-#     print("Signing Address:", signature_data["address"])
-#     print("Phone Number:", signature_data["data"]["phone_number"])
-#     print("Signature:", signature_data["signature"])
-#     print("Signature File:", signature_path)
+    # Print the signature details (now accessing the tuple correctly)
+    print("\n=== Signature Details ===")
+    print("Signing Address:", signature_data["address"])
+    print("Phone Number:", signature_data["data"]["phone_number"])
+    print("Signature:", signature_data["signature"])
+    print("Signature File:", signature_path)
 
-#     # Then verify the signature
-#     # is_verified = verify_pdf_signature(signature_data)
-#     is_verified = verify_object_signature_no_data(file_path, signature_data)
-#     print(
-#         "\nSignature Verification Result:", "✅ Valid" if is_verified else "❌ Invalid"
-#     )
+    # Then verify the signature
+    # is_verified = verify_pdf_signature(signature_data)
+    is_verified = verify_object_signature_no_data(file_path, signature_data)
+    print(
+        "\nSignature Verification Result:", "✅ Valid" if is_verified else "❌ Invalid"
+    )

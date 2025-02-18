@@ -1,0 +1,8 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.git/
+dump.rdb
+threads_db
