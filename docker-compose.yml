@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  ogas-bot:
+    build: .
+    env_file: ./.env
+    volumes:
+      - ./app/utils/inventory:/app/app/utils/inventory
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command: http --url=immune-grand-bulldog.ngrok-free.app ogas-bot:8000
+    depends_on:
+      - ogas-bot
